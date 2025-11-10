@@ -232,87 +232,228 @@ const QUESTIONS = [
 { "id":"S138","tema":"Profesinė etika","klausimas":"Koks elgesys pažeidžia profesinę etiką?","pasirinkimai":["Paciento duomenų viešinimas","Empatiškas bendravimas","Laiku atliekamas darbas","Konfidencialumo laikymasis"],"teisingi":[0],"feedback_short":"Viešinti duomenis – etikos pažeidimas.","feedback_long":"Paciento duomenys turi būti saugomi; jų viešinimas ar aptarimas su pašaliniais asmenimis – draudžiamas."},
 { "id":"S139","tema":"IPS vaidmuo mokyme","klausimas":"Kaip IPS gali dalyvauti studentų mokyme skyriuje?","pasirinkimai":["Būti praktikos vadovu ir dalintis patirtimi","Tik stebėti iš tolo","Nedalyvauti, nes tai ne jo darbas","Vesti mokymus tik administracijai"],"teisingi":[0],"feedback_short":"IPS perduoda patirtį studentams.","feedback_long":"IPS gali būti mentoriumi studentams, padėti jiems įgyti praktinių įgūdžių ir suprasti profesines vertybes."}
 ];
-// --- Testo logika ---
-let questions = [];
-let currentIndex = 0;
-let score = 0;
-let selectedQuestions = [];
-let wrongAnswers = [];
+// --- Testo logika (suderinta su #start, .qty, #quiz, #result) ---
+let SELECT_COUNT = 10;
+let pool = QUESTIONS.slice();       // visi klausimai
+let selected = [];                  // atrinkti klausimai
+let idx = 0;                        // dabartinis indeksas
+let correct = 0;                    // teisingų skaičius
+let startTime = 0;                  // pradžios laikas
+let wrongList = [];                 // neteisingi klausimai
 
-function startQuiz() {
-  const count = parseInt(document.getElementById("questionCount").value);
-  document.getElementById("startScreen").style.display = "none";
-  document.getElementById("quizContainer").style.display = "block";
-  selectedQuestions = QUESTIONS.sort(() => 0.5 - Math.random()).slice(0, count);
-  currentIndex = 0;
-  score = 0;
-  wrongAnswers = [];
-  showQuestion();
-}
+// UI elementai (tavo ID)
+const elStart   = document.getElementById('start');
+const elQuiz    = document.getElementById('quiz');
+const elResult  = document.getElementById('result');
+const elTema    = document.getElementById('tema');
+const elQid     = document.getElementById('qid');
+const elQ       = document.getElementById('klausimas');
+const elChoices = document.getElementById('choices');
+const elCheck   = document.getElementById('check');
+const elNext    = document.getElementById('next');
+const elFb      = document.getElementById('feedback');
 
-function showQuestion() {
-  const q = selectedQuestions[currentIndex];
-  document.getElementById("question").innerHTML = `<h2>${q.id}. ${q.klausimas}</h2>`;
-  const optionsDiv = document.getElementById("options");
-  optionsDiv.innerHTML = "";
-  q.pasirinkimai.forEach((opt, i) => {
-    const btn = document.createElement("button");
-    btn.textContent = opt;
-    btn.className = "option-btn";
-    btn.onclick = () => checkAnswer(i);
-    optionsDiv.appendChild(btn);
+const elSeen    = document.getElementById('seen');
+const elTotal   = document.getElementById('total');
+
+const elResTotal    = document.getElementById('res_total');
+const elResCorrect  = document.getElementById('res_correct');
+const elResAcc      = document.getElementById('res_accuracy');
+const elResTime     = document.getElementById('res_time');
+const elWeakWrap    = document.getElementById('weakAreasWrap');
+const elWeak        = document.getElementById('weakAreas');
+
+const elQtyInfo = document.getElementById('qtyInfo');
+const btnStart  = document.getElementById('startBtn');
+const btnRetryWeak = document.getElementById('retryWeak');
+const btnToStart   = document.getElementById('toStart');
+
+// Pasirinkimas mygtukais 10/20/30/100/139
+document.querySelectorAll('.qty').forEach(btn => {
+  btn.addEventListener('click', () => {
+    SELECT_COUNT = parseInt(btn.dataset.q, 10);
+    elQtyInfo.innerHTML = `Pasirinkta: <b>${SELECT_COUNT}</b> klausimų.`;
+    // vizualiai
+    document.querySelectorAll('.qty').forEach(b=>b.classList.remove('warn'));
+    btn.classList.add('warn');
   });
+});
+
+// Pradėti
+btnStart.addEventListener('click', () => {
+  startTest();
+});
+
+function startTest(fromWeak=false){
+  const source = fromWeak ? wrongList.slice() : pool.slice();
+
+  // maišom ir imam SELECT_COUNT (arba tiek, kiek turim)
+  selected = shuffle(source).slice(0, Math.min(SELECT_COUNT, source.length));
+  idx = 0;
+  correct = 0;
+  wrongList = [];
+
+  // UI
+  elStart.classList.add('hidden');
+  elResult.classList.add('hidden');
+  elQuiz.classList.remove('hidden');
+  elTotal.textContent = selected.length.toString();
+  elSeen.textContent  = '0';
+  startTime = Date.now();
+
+  renderQuestion();
 }
 
-function checkAnswer(selected) {
-  const q = selectedQuestions[currentIndex];
-  const correct = q.teisingi.includes(selected);
-  if (correct) {
-    score++;
-  } else {
-    wrongAnswers.push(q);
-  }
-  document.getElementById("feedback").innerHTML = `
-    <p><b>${correct ? "✅ Teisingai!" : "❌ Neteisingai."}</b></p>
-    <p>${q.feedback_short}</p>
-    <small>${q.feedback_long}</small>
+function renderQuestion(){
+  const q = selected[idx];
+
+  elTema.textContent = q.tema || '';
+  elQid.textContent  = q.id || '';
+  elQ.innerHTML      = q.klausimas;
+
+  // sugeneruojam pasirinkimus (checkbox – kad tiktų keli teisingi)
+  elChoices.innerHTML = '';
+  q.pasirinkimai.forEach((opt, i) => {
+    const id = `opt_${idx}_${i}`;
+    const lbl = document.createElement('label');
+    lbl.className = 'choice';
+    lbl.setAttribute('for', id);
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = id;
+    cb.dataset.index = String(i);
+    cb.style.marginTop = '3px';
+
+    const span = document.createElement('span');
+    span.innerHTML = opt;
+
+    lbl.appendChild(cb);
+    lbl.appendChild(span);
+    elChoices.appendChild(lbl);
+  });
+
+  elFb.classList.add('hidden');
+  elFb.innerHTML = '';
+  elCheck.disabled = false;
+  elNext.classList.add('hidden');
+}
+
+// Tikrinimas
+elCheck.addEventListener('click', () => {
+  const q = selected[idx];
+  const marked = Array.from(elChoices.querySelectorAll('input[type="checkbox"]:checked'))
+    .map(cb => parseInt(cb.dataset.index, 10))
+    .sort((a,b)=>a-b);
+
+  const correctSet = (q.teisingi || []).slice().sort((a,b)=>a-b);
+
+  const ok = arraysEqual(marked, correctSet);
+
+  // nuspalvinam
+  elChoices.querySelectorAll('label.choice').forEach((lbl, i) => {
+    lbl.classList.remove('correct','incorrect');
+    if (correctSet.includes(i)) lbl.classList.add('correct');
+    const input = lbl.querySelector('input');
+    if (input.checked && !correctSet.includes(i)) lbl.classList.add('incorrect');
+    input.disabled = true;
+  });
+
+  if (ok) { correct++; }
+
+  // feedback
+  elFb.innerHTML = `
+    <div><span class="${ok?'ok':'bad'}">${ok?'✅ Teisingai':'❌ Neteisingai'}</span></div>
+    <div style="margin-top:6px">${q.feedback_short||''}</div>
+    <div style="margin-top:6px; font-size:12px; color:#cbd5e1">${q.feedback_long||''}</div>
   `;
-  const nextBtn = document.createElement("button");
-  nextBtn.textContent = "Kitas klausimas";
-  nextBtn.className = "next-btn";
-  nextBtn.onclick = nextQuestion;
-  document.getElementById("feedback").appendChild(nextBtn);
-}
+  elFb.classList.remove('hidden');
 
-function nextQuestion() {
-  currentIndex++;
-  document.getElementById("feedback").innerHTML = "";
-  if (currentIndex < selectedQuestions.length) {
-    showQuestion();
+  if (!ok) wrongList.push(q);
+
+  elCheck.disabled = true;
+  elNext.classList.remove('hidden');
+});
+
+// Kitas klausimas
+elNext.addEventListener('click', () => {
+  idx++;
+  elSeen.textContent = Math.min(idx, selected.length).toString();
+  if (idx < selected.length) {
+    renderQuestion();
   } else {
-    showResults();
+    finishTest();
   }
-}
+});
 
-function showResults() {
-  document.getElementById("quizContainer").style.display = "none";
-  document.getElementById("results").style.display = "block";
-  const total = selectedQuestions.length;
-  const percent = Math.round((score / total) * 100);
-  document.getElementById("score").innerHTML = `🎯 Jūsų rezultatas: <b>${percent}%</b> (${score} iš ${total})`;
+function finishTest(){
+  // rodom rezultatus
+  elQuiz.classList.add('hidden');
+  elResult.classList.remove('hidden');
 
-  if (wrongAnswers.length > 0) {
-    let html = "<h3>📘 Vietos, kur reikėtų pasitempti:</h3><ul>";
-    wrongAnswers.forEach(q => {
-      html += `<li>${q.id}: ${q.tema} – <i>${q.feedback_short}</i></li>`;
+  const total = selected.length;
+  const percent = Math.round((correct/total)*100);
+  const secs = Math.round((Date.now()-startTime)/1000);
+  const mm = Math.floor(secs/60);
+  const ss = String(secs%60).padStart(2,'0');
+
+  elResTotal.textContent   = String(total);
+  elResCorrect.textContent = String(correct);
+  elResAccuracy.textContent= `${percent}%`;
+  elResTime.textContent    = `${mm}:${ss}`;
+
+  // silpnos temos – sugrupuojam
+  if (wrongList.length > 0){
+    const byTema = {};
+    wrongList.forEach(q => {
+      byTema[q.tema] = (byTema[q.tema]||0) + 1;
     });
-    html += "</ul>";
-    document.getElementById("weakAreas").innerHTML = html;
+    const rows = Object.entries(byTema)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([t, n]) => `<li><b>${t}</b> — ${n} netikslu(ų)</li>`)
+      .join('');
+    elWeak.innerHTML = `<ul>${rows}</ul>`;
+    elWeakWrap.classList.remove('hidden');
   } else {
-    document.getElementById("weakAreas").innerHTML = "<p>Puiku! Visi atsakymai teisingi 🎉</p>";
+    elWeak.innerHTML = `<p>Puiku! Visi atsakymai teisingi 🎉</p>`;
+    elWeakWrap.classList.remove('hidden');
   }
 }
 
+// Kartoti silpnas temas
+btnRetryWeak.addEventListener('click', () => {
+  if (wrongList.length === 0){
+    // jei nėra silpnų – grįžtam į pradžią
+    toStart();
+    return;
+  }
+  startTest(true);
+});
+
+// Grįžti į pradžią
+btnToStart.addEventListener('click', toStart);
+function toStart(){
+  elResult.classList.add('hidden');
+  elStart.classList.remove('hidden');
+  elSeen.textContent = '0';
+  elTotal.textContent = '0';
+}
+
+// Helperiai
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i=a.length-1; i>0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function arraysEqual(a,b){
+  if (a.length!==b.length) return false;
+  for (let i=0;i<a.length;i++) if (a[i]!==b[i]) return false;
+  return true;
+}
+// --- Testo logika: PABAIGA ---
 document.addEventListener("DOMContentLoaded", () => {
   document.body.innerHTML = `
     <div id="startScreen" class="center">
