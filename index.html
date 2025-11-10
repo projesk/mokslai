@@ -454,32 +454,6 @@ function arraysEqual(a,b){
   return true;
 }
 // --- Testo logika: PABAIGA ---
-document.addEventListener("DOMContentLoaded", () => {
-  document.body.innerHTML = `
-    <div id="startScreen" class="center">
-      <h1>IPS mokymo testas</h1>
-      <label>Pasirinkite klausimų kiekį:</label><br>
-      <select id="questionCount">
-        <option value="10">10</option>
-        <option value="20">20</option>
-        <option value="30">30</option>
-        <option value="50">50</option>
-        <option value="100">100</option>
-        <option value="139">Visi klausimai</option>
-      </select>
-      <br><br>
-      <button class="start-btn" onclick="startQuiz()">Pradėti</button>
-    </div>
-    <div id="quizContainer" style="display:none;">
-      <div id="question"></div>
-      <div id="options" class="options"></div>
-      <div id="feedback"></div>
-    </div>
-    <div id="results" style="display:none;">
-      <h2>Rezultatai</h2>
-      <div id="score"></div>
-      <div id="weakAreas"></div>
-      <button class="start-btn" onclick="location.reload()">Iš naujo</button>
-    </div>
-  `;
-});
+</script>
+</body>
+</html>
